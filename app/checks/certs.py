@@ -1,8 +1,11 @@
-"""Optional TLS certificate expiry watch for a configured host:port list.
+"""TLS certificate expiry watch.
 
-Entirely skipped (returns no results) when CERT_HOSTS isn't set - most
-single-server setups don't need this, but it's cheap to offer for anyone
-terminating TLS themselves (reverse proxy, mail server, etc.).
+Checks a manually configured `host:port` list (CERT_HOSTS) plus, by
+default, every hostname discovered from running containers' Traefik
+router-rule labels via the mounted docker.sock (see
+docker_checks.discover_traefik_hosts) - so a Traefik-fronted setup gets
+cert-expiry monitoring for free, without hand-maintaining a host list.
+Entirely skipped (returns no results) if neither source turns up anything.
 """
 
 import socket
@@ -10,9 +13,11 @@ import ssl
 from datetime import datetime, timezone
 
 from . import CheckResult, Status
+from . import docker_checks
 
 WARN_DAYS = 21
 CRIT_DAYS = 7
+DEFAULT_PORT = 443
 
 
 def _check_one(host: str, port: int) -> CheckResult:
@@ -45,17 +50,31 @@ def _check_one(host: str, port: int) -> CheckResult:
         )
 
 
+def _parse_entry(entry: str):
+    entry = entry.strip()
+    if not entry:
+        return None
+    if ":" in entry:
+        host, port_str = entry.rsplit(":", 1)
+        try:
+            return host, int(port_str)
+        except ValueError:
+            return None
+    return entry, DEFAULT_PORT
+
+
 def run(config) -> list:
-    hosts = config.get("cert_hosts") or []
-    results = []
-    for entry in hosts:
-        entry = entry.strip()
-        if not entry:
-            continue
-        if ":" in entry:
-            host, port_str = entry.rsplit(":", 1)
-            port = int(port_str)
-        else:
-            host, port = entry, 443
-        results.append(_check_one(host, port))
-    return results
+    targets = set()
+
+    for entry in config.get("cert_hosts") or []:
+        parsed = _parse_entry(entry)
+        if parsed:
+            targets.add(parsed)
+
+    if config.get("cert_auto_discover_traefik", True):
+        for host in docker_checks.discover_traefik_hosts():
+            parsed = _parse_entry(host)
+            if parsed:
+                targets.add(parsed)
+
+    return [_check_one(host, port) for host, port in sorted(targets)]

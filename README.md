@@ -24,7 +24,7 @@ login), not a metered API key.
 | Docker | Container status/health, whether a newer image is available in the registry |
 | Network | Ping reachability/latency, throughput speed test (own cadence, see below) |
 | Logs | Warning/error-level lines from journald (or syslog fallback) since the last run |
-| Certs | Optional TLS expiry watch for a configured `host:port` list |
+| Certs | TLS expiry watch for a configured `host:port` list, plus hostnames auto-discovered from Traefik router labels via docker.sock (see below) |
 
 The continuous CPU/memory/GPU sampling (`app/sampler.py`) is the one piece
 that isn't tied to the cron schedule at all - it runs for the whole
@@ -106,6 +106,14 @@ See `.env.example` for the full list with defaults. The notable ones:
   compute utilization is often exactly what you want (transcoding,
   inference), so treating that as a warning would just be noise. Ignored
   entirely if no NVIDIA GPU is detected.
+- `CERT_HOSTS` / `CERT_AUTO_DISCOVER_TRAEFIK` - manual `host:port` list
+  (port defaults to 443) plus, by default, every hostname pulled from
+  running containers' `traefik.http.routers.*.rule=Host(\`...\`)` labels via
+  docker.sock - so a Traefik-fronted setup gets TLS-expiry monitoring with
+  zero manual config. Containers labeled `traefik.enable=false` are skipped;
+  everything else is included, matching Traefik's own default. Set
+  `CERT_AUTO_DISCOVER_TRAEFIK=false` to rely on `CERT_HOSTS` only, e.g. if
+  you terminate TLS somewhere other than Traefik.
 
 ## A note on the mounts
 

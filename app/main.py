@@ -49,6 +49,7 @@ def load_config():
 
     cert_hosts_raw = os.environ.get("CERT_HOSTS", "")
     cert_hosts = [h for h in cert_hosts_raw.split(",") if h.strip()]
+    cert_auto_discover_traefik = os.environ.get("CERT_AUTO_DISCOVER_TRAEFIK", "true").lower() != "false"
 
     return {
         "ntfy_url": os.environ.get("NTFY_URL", "https://ntfy.sh"),
@@ -59,6 +60,7 @@ def load_config():
         "expected_download_mbps": _env_float("EXPECTED_DOWNLOAD_MBPS", 0) or None,
         "expected_upload_mbps": _env_float("EXPECTED_UPLOAD_MBPS", 0) or None,
         "cert_hosts": cert_hosts,
+        "cert_auto_discover_traefik": cert_auto_discover_traefik,
         "log_lines_max": _env_int("LOG_LINES_MAX", 200),
         "cpu_warn_pct": _env_float("CPU_WARN_PCT", 80),
         "cpu_crit_pct": _env_float("CPU_CRIT_PCT", 95),
