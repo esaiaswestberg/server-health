@@ -44,6 +44,14 @@ def _iter_host_mounts():
             local_path = HOST_ROOT if mountpoint == "/" else os.path.join(
                 HOST_ROOT, mountpoint.lstrip("/")
             )
+            # Some hosts bind-mount individual *files* (e.g. /etc/hostname,
+            # /etc/hosts - common for container-management tooling running
+            # on the host itself). Those aren't filesystems in their own
+            # right; checking disk usage "on" them just reports whatever
+            # partition they happen to live on, duplicating another entry
+            # under a misleading name. Only directories are real mounts.
+            if not os.path.isdir(local_path):
+                continue
             yield mountpoint, local_path
 
 
