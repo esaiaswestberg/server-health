@@ -1,0 +1,41 @@
+services:
+  health-check:
+    build: .
+    container_name: server-health-check
+    restart: unless-stopped
+    env_file:
+      - .env
+    cap_add:
+      # Needed to chroot into /host/root for read-only host package-manager
+      # / systemctl queries (updates.py). Docker grants this by default to
+      # root containers anyway; listed explicitly for clarity.
+      - SYS_CHROOT
+    volumes:
+      # Codex CLI auth (ChatGPT account login). Persisted on the host so the
+      # container never has to re-run an interactive login. Codex refreshes
+      # tokens in place here.
+      - ${CODEX_AUTH_DIR:-~/.codex}:/root/.codex
+
+      # App state: last-run timestamp, log-scan cursor, last speedtest time.
+      - ./data:/data
+
+      # Real host metrics instead of the container's own cgroup/overlay view.
+      - /proc:/host/proc:ro
+      - /:/host/root:ro
+      # /run is normally its own tmpfs mount, so it doesn't come along with
+      # the root bind above - mount it explicitly under /host/root so a
+      # `chroot /host/root systemctl --failed` can reach the host's real
+      # systemd socket at /run/systemd/private.
+      - /run/systemd:/host/root/run/systemd:ro
+
+      # Container status + image update checks. Read-only, but note this is
+      # still root-equivalent access to the Docker daemon - see README.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+      # Log scanning uses `chroot /host/root journalctl ...` (the host's own
+      # journalctl, read via chroot - see updates.py's docstring for why we
+      # chroot instead of installing systemd in this image). /var/log is
+      # normally part of the root filesystem so it comes along with the
+      # /:/host/root bind above; this is only needed on hosts where
+      # /var/log/journal happens to live on its own mount.
+      - /var/log/journal:/host/root/var/log/journal:ro

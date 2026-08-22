@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "warning", "critical"],
+      "description": "Overall health verdict for this run, worst-case across all findings."
+    },
+    "title": {
+      "type": "string",
+      "description": "Short (under 60 chars) headline suitable as a push notification title."
+    },
+    "summary": {
+      "type": "string",
+      "description": "2-4 sentence plain-language summary of the server's health this run."
+    },
+    "highlights": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Notable individual findings, one sentence each. Empty array if nothing stands out."
+    },
+    "recommendations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Concrete suggested actions, if any. Empty array if none are warranted."
+    }
+  },
+  "required": ["status", "title", "summary", "highlights", "recommendations"],
+  "additionalProperties": false
+}
