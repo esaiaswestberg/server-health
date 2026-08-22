@@ -85,15 +85,14 @@ arrives at your ntfy topic.
 
 ## Web dashboard
 
-> **No authentication.** The dashboard at `http://<host>:8080/` is entirely
-> read-only (no buttons, no forms, nothing to interact with) but it has
-> **no login of its own**, and by default `docker-compose.yml` publishes it
-> on `0.0.0.0` - reachable from your whole LAN the moment the container
-> starts. It displays real information about your server: hostnames,
-> container names, disk paths, and raw log-line snippets among them. Put a
-> reverse proxy with basic auth (or your own SSO/auth setup) in front of it
-> before treating it as anything other than "trusted LAN only", and
-> definitely before ever exposing it to the internet.
+> **No authentication of its own.** The dashboard is entirely read-only (no
+> buttons, no forms, nothing to interact with) but has **no login built
+> in**. It displays real information about your server: hostnames,
+> container names, disk paths, and raw log-line snippets among them. By
+> default (below) it's routed through Traefik with a basic-auth middleware
+> - don't remove that auth without putting something equivalent in its
+> place, and don't skip straight to the `ports:` fallback further down
+> without understanding it has no auth at all.
 
 It shows the same things ntfy gets notified about, live and continuously:
 
@@ -112,10 +111,59 @@ re-fetches `/api/metrics` every 30 seconds to redraw the charts
 nothing added to the image for it). There's nothing to click; just leave it
 open on a second monitor or check in on it.
 
-If you already run Traefik (see the auto-discovery feature above), the
-commented-out example in `docker-compose.yml` shows how to front the
-dashboard with it and a basic-auth middleware instead of publishing the
-port directly - see the comments there.
+### Setting it up behind Traefik (default)
+
+`docker-compose.yml` ships with this wired up by default: the service joins
+your Traefik instance's Docker network directly (no port published on the
+host at all) and carries Traefik labels with a basic-auth middleware, so
+the *only* way to reach the dashboard is through Traefik with a password.
+Three things need setting up once:
+
+1. **The network.** `docker-compose.yml` attaches to the external network
+   named by `TRAEFIK_NETWORK` in `.env` (default `traefik`). Check what
+   your Traefik container is actually attached to:
+
+   ```sh
+   docker inspect <your-traefik-container> --format '{{json .NetworkSettings.Networks}}'
+   ```
+
+   If it's not called `traefik`, set `TRAEFIK_NETWORK` in `.env` to the
+   real name. If the network doesn't exist as a standalone Docker network
+   yet (e.g. Traefik's compose file defines it as its own default network
+   with a fixed name, which already creates it), create it once with
+   `docker network create traefik`.
+
+2. **The hostname.** Set `DASHBOARD_DOMAIN` in `.env` to whatever hostname
+   you want the dashboard reachable at, e.g. `health.yourdomain.com`. If
+   your other Traefik-routed services set explicit `entrypoints` or
+   `tls.certresolver` labels, add matching ones for this service too - see
+   the commented example right in `docker-compose.yml`'s `labels:` block.
+
+3. **The password.** Generate an htpasswd hash:
+
+   ```sh
+   docker run --rm httpd:2.4-alpine htpasswd -nbB admin 'your-password-here'
+   ```
+
+   That prints something like `admin:$2y$05$abc...xyz`. Open
+   `docker-compose.yml` and replace the placeholder in the
+   `basicauth.users` label with it - **doubling every single `$` to `$$`**
+   (so `$2y$05$abc` becomes `$$2y$$05$$abc`; this is a docker-compose
+   escaping requirement, not a Traefik one). This is the one setting in the
+   whole project that's edited directly in `docker-compose.yml` instead of
+   `.env` - Compose's `.env`-file interpolation has known bugs with
+   `$`-heavy values passed through into labels this way, so keeping it out
+   of `.env` avoids that entirely.
+
+Then `docker compose up -d` as usual.
+
+### Not using Traefik
+
+Comment out the whole `labels:` block in `docker-compose.yml` and uncomment
+the `ports:` block right below it instead - that publishes the dashboard on
+`WEB_PORT` (default 8080, `.env`). It still has **no authentication of its
+own** in this mode, so put some other reverse proxy or auth layer in front
+before exposing it beyond a trusted LAN.
 
 ## Configuration
 
@@ -156,8 +204,13 @@ See `.env.example` for the full list with defaults. The notable ones:
   container labels. Only the file provider is covered (not Consul/etcd/
   Kubernetes CRD/etc.), and directories aren't scanned recursively, matching
   Traefik's own file-provider behavior. Unset by default (skipped).
-- `WEB_PORT` (default 8080) - the dashboard's port. See the security note
-  in "Web dashboard" above before changing how it's published.
+- `TRAEFIK_NETWORK` (default `traefik`) / `DASHBOARD_DOMAIN` - which Docker
+  network the dashboard joins to reach Traefik, and the hostname Traefik
+  routes to it. See "Web dashboard" above for the full one-time setup
+  (including the basic-auth password, which is set directly in
+  `docker-compose.yml` rather than here).
+- `WEB_PORT` (default 8080) - only used in the non-Traefik `ports:`
+  fallback mode. See "Web dashboard" above.
 - `DASHBOARD_CHART_HOURS` (default 6) - how much history the dashboard's
   charts show.
 - `HISTORY_MAX_RUNS` (default 500) - how many past scheduled runs (report +
