@@ -24,7 +24,7 @@ login), not a metered API key.
 | Docker | Container status/health, whether a newer image is available in the registry |
 | Network | Ping reachability/latency, throughput speed test (own cadence, see below) |
 | Logs | Warning/error-level lines from journald (or syslog fallback) since the last run |
-| Certs | TLS expiry watch for a configured `host:port` list, plus hostnames auto-discovered from Traefik router labels via docker.sock (see below) |
+| Certs | TLS expiry watch for a configured `host:port` list, plus hostnames auto-discovered from Traefik router labels and/or a dynamic config file (see below) |
 
 The continuous CPU/memory/GPU sampling (`app/sampler.py`) is the one piece
 that isn't tied to the cron schedule at all - it runs for the whole
@@ -106,14 +106,21 @@ See `.env.example` for the full list with defaults. The notable ones:
   compute utilization is often exactly what you want (transcoding,
   inference), so treating that as a warning would just be noise. Ignored
   entirely if no NVIDIA GPU is detected.
-- `CERT_HOSTS` / `CERT_AUTO_DISCOVER_TRAEFIK` - manual `host:port` list
-  (port defaults to 443) plus, by default, every hostname pulled from
-  running containers' `traefik.http.routers.*.rule=Host(\`...\`)` labels via
-  docker.sock - so a Traefik-fronted setup gets TLS-expiry monitoring with
-  zero manual config. Containers labeled `traefik.enable=false` are skipped;
-  everything else is included, matching Traefik's own default. Set
-  `CERT_AUTO_DISCOVER_TRAEFIK=false` to rely on `CERT_HOSTS` only, e.g. if
-  you terminate TLS somewhere other than Traefik.
+- `CERT_HOSTS` - manual `host:port` list (port defaults to 443), combined
+  with whatever Traefik auto-discovery below turns up.
+- `CERT_AUTO_DISCOVER_TRAEFIK` - `true` (default) auto-discovers hostnames
+  from running containers' `traefik.http.routers.*.rule=Host(\`...\`)` /
+  `traefik.tcp.routers.*.rule=HostSNI(\`...\`)` labels via docker.sock, so a
+  Traefik-fronted setup gets TLS-expiry monitoring with zero manual config.
+  Containers labeled `traefik.enable=false` are skipped; everything else is
+  included, matching Traefik's own default. Set to `false` to disable.
+- `TRAEFIK_DYNAMIC_CONFIG_PATH` - optional host path to a Traefik dynamic
+  configuration directory or file (YAML or TOML, the file provider) -
+  hostnames from its `http`/`tcp` routers' `rule` fields are discovered the
+  same way as the Docker-label source, for routers defined outside of
+  container labels. Only the file provider is covered (not Consul/etcd/
+  Kubernetes CRD/etc.), and directories aren't scanned recursively, matching
+  Traefik's own file-provider behavior. Unset by default (skipped).
 
 ## A note on the mounts
 

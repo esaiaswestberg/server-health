@@ -61,6 +61,7 @@ def load_config():
         "expected_upload_mbps": _env_float("EXPECTED_UPLOAD_MBPS", 0) or None,
         "cert_hosts": cert_hosts,
         "cert_auto_discover_traefik": cert_auto_discover_traefik,
+        "traefik_dynamic_config_path": os.environ.get("TRAEFIK_DYNAMIC_CONFIG_PATH") or None,
         "log_lines_max": _env_int("LOG_LINES_MAX", 200),
         "cpu_warn_pct": _env_float("CPU_WARN_PCT", 80),
         "cpu_crit_pct": _env_float("CPU_CRIT_PCT", 95),

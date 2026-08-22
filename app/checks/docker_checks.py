@@ -8,20 +8,11 @@ layers - cheap compared to an actual `docker pull`.
 
 import json
 import os
-import re
 import subprocess
 
 from . import CheckResult, Status
 
 _ENV = dict(os.environ, DOCKER_CLI_EXPERIMENTAL="enabled")
-
-# Matches Traefik router-rule label keys, e.g. traefik.http.routers.app.rule
-# or traefik.tcp.routers.app.rule (also matches the namespaced Swarm form
-# traefik.<name>.http.routers...).
-_TRAEFIK_RULE_LABEL = re.compile(r"traefik(\.[^.]+)?\.(?:http|tcp)\.routers\.[^.]+\.rule$")
-# Pulls every `Host(\`example.com\`)` (or Host(\`a\`,\`b\`)) out of a rule value.
-_TRAEFIK_HOST_PATTERN = re.compile(r"Host(?:SNI)?\(([^)]*)\)")
-_BACKTICK_VALUE = re.compile(r"`([^`]+)`")
 
 
 def _docker_available() -> bool:
@@ -137,57 +128,6 @@ def _update_check(container: dict) -> CheckResult:
         category="docker", name=f"{name}-update", status=Status.OK,
         note=f"{image}: up to date",
     )
-
-
-def _running_container_labels():
-    try:
-        proc = subprocess.run(
-            ["docker", "ps", "-q"], capture_output=True, text=True, timeout=15, env=_ENV
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return []
-    if proc.returncode != 0:
-        return []
-
-    ids = proc.stdout.split()
-    if not ids:
-        return []
-
-    try:
-        proc = subprocess.run(
-            ["docker", "inspect"] + ids, capture_output=True, text=True, timeout=20, env=_ENV
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return []
-    if proc.returncode != 0:
-        return []
-
-    try:
-        entries = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        return []
-    return [(e.get("Config") or {}).get("Labels") or {} for e in entries]
-
-
-def discover_traefik_hosts() -> list:
-    """Pulls hostnames out of running containers' Traefik router-rule labels
-    (`traefik.http.routers.<name>.rule=Host(\\`example.com\\`)`), for
-    auto-feeding into the TLS cert-expiry check. Containers explicitly opted
-    out via `traefik.enable=false` are skipped; everything else is included,
-    matching Traefik's own default of exposing containers unless told not to.
-    Returns [] on any Docker/parsing failure - this is a best-effort data
-    source, not a check with its own pass/fail status.
-    """
-    hosts = set()
-    for labels in _running_container_labels():
-        if not labels or labels.get("traefik.enable", "").strip().lower() == "false":
-            continue
-        for key, value in labels.items():
-            if not _TRAEFIK_RULE_LABEL.search(key):
-                continue
-            for host_expr in _TRAEFIK_HOST_PATTERN.findall(value):
-                hosts.update(_BACKTICK_VALUE.findall(host_expr))
-    return sorted(hosts)
 
 
 def run(config) -> list:

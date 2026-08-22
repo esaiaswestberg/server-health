@@ -1,11 +1,10 @@
 """TLS certificate expiry watch.
 
 Checks a manually configured `host:port` list (CERT_HOSTS) plus, by
-default, every hostname discovered from running containers' Traefik
-router-rule labels via the mounted docker.sock (see
-docker_checks.discover_traefik_hosts) - so a Traefik-fronted setup gets
-cert-expiry monitoring for free, without hand-maintaining a host list.
-Entirely skipped (returns no results) if neither source turns up anything.
+default, every hostname auto-discovered from Traefik (Docker labels and/or
+a dynamic config file - see app/traefik.py) - so a Traefik-fronted setup
+gets cert-expiry monitoring for free, without hand-maintaining a host list.
+Entirely skipped (returns no results) if no source turns up anything.
 """
 
 import socket
@@ -13,7 +12,7 @@ import ssl
 from datetime import datetime, timezone
 
 from . import CheckResult, Status
-from . import docker_checks
+from .. import traefik
 
 WARN_DAYS = 21
 CRIT_DAYS = 7
@@ -71,10 +70,9 @@ def run(config) -> list:
         if parsed:
             targets.add(parsed)
 
-    if config.get("cert_auto_discover_traefik", True):
-        for host in docker_checks.discover_traefik_hosts():
-            parsed = _parse_entry(host)
-            if parsed:
-                targets.add(parsed)
+    for host in traefik.discover_hosts(config):
+        parsed = _parse_entry(host)
+        if parsed:
+            targets.add(parsed)
 
     return [_check_one(host, port) for host, port in sorted(targets)]
