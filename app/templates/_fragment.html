@@ -1,0 +1,70 @@
+{% if not latest %}
+<div class="card empty-state">
+  <p>No scheduled check has completed yet.</p>
+  <p class="muted">The continuous sampler may already be collecting data, but the AI report and check breakdown only appear after the first scheduled run (see <code>CRON_SCHEDULE</code>) - or run one now with
+    <code>docker compose run --rm health-check python3 -m app.main</code>.</p>
+</div>
+{% else %}
+<div class="card status-card status-{{ latest.report.status }}">
+  <div class="status-header">
+    <span class="badge badge-{{ latest.report.status }}">{{ latest.report.status }}</span>
+    <h2>{{ latest.report.title }}</h2>
+  </div>
+  <p class="timestamp">Last checked {{ latest_relative }} ({{ latest.ts }})</p>
+  <p class="summary">{{ latest.report.summary }}</p>
+
+  {% if latest.report.highlights %}
+  <div class="sub-block">
+    <h3>Highlights</h3>
+    <ul>
+      {% for h in latest.report.highlights %}<li>{{ h }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if latest.report.recommendations %}
+  <div class="sub-block">
+    <h3>Recommendations</h3>
+    <ul>
+      {% for r in latest.report.recommendations %}<li>{{ r }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>All checks</h2>
+  {% for category, checks in grouped_checks.items() %}
+  <div class="check-group">
+    <h3>{{ category }}</h3>
+    <table class="checks-table">
+      {% for c in checks %}
+      <tr class="status-{{ c.status }}">
+        <td class="dot-cell"><span class="dot dot-{{ c.status }}"></span></td>
+        <td class="name-cell">{{ c.name }}</td>
+        <td class="note-cell">{{ c.note }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Recent runs</h2>
+  <table class="history-table">
+    <thead>
+      <tr><th>When</th><th>Status</th><th>Title</th></tr>
+    </thead>
+    <tbody>
+      {% for run in history %}
+      <tr class="status-{{ run.report.status }}">
+        <td>{{ run.relative }}</td>
+        <td><span class="badge badge-{{ run.report.status }}">{{ run.report.status }}</span></td>
+        <td>{{ run.report.title }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
