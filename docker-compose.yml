@@ -3,8 +3,43 @@ services:
     build: .
     container_name: server-health-check
     restart: unless-stopped
-    env_file:
-      - .env
+    # Every setting is passed as a substitution variable (${VAR:-default})
+    # rather than via `env_file: - .env`, so this works the same way
+    # whether the values come from a real .env file next to this compose
+    # file (plain `docker compose up`) or from a Portainer stack's own
+    # "Environment variables" UI, which doesn't create a physical .env
+    # file - see the README's "Deploying via Portainer" section.
+    environment:
+      NTFY_URL: ${NTFY_URL:-https://ntfy.sh}
+      NTFY_TOPIC: ${NTFY_TOPIC:?set NTFY_TOPIC to your ntfy topic name}
+      NTFY_TOKEN: ${NTFY_TOKEN:-}
+      NTFY_NOTIFY_ON_OK: ${NTFY_NOTIFY_ON_OK:-true}
+      DB_PATH: ${DB_PATH:-/data/health.db}
+      CRON_SCHEDULE: ${CRON_SCHEDULE:-0 * * * *}
+      TZ: ${TZ:-}
+      SPEEDTEST_INTERVAL_HOURS: ${SPEEDTEST_INTERVAL_HOURS:-24}
+      EXPECTED_DOWNLOAD_MBPS: ${EXPECTED_DOWNLOAD_MBPS:-}
+      EXPECTED_UPLOAD_MBPS: ${EXPECTED_UPLOAD_MBPS:-}
+      CERT_HOSTS: ${CERT_HOSTS:-}
+      CERT_AUTO_DISCOVER_TRAEFIK: ${CERT_AUTO_DISCOVER_TRAEFIK:-true}
+      TRAEFIK_DYNAMIC_CONFIG_PATH: ${TRAEFIK_DYNAMIC_CONFIG_PATH:-}
+      LOG_LINES_MAX: ${LOG_LINES_MAX:-200}
+      SAMPLE_INTERVAL_SECONDS: ${SAMPLE_INTERVAL_SECONDS:-10}
+      METRICS_RETENTION_HOURS: ${METRICS_RETENTION_HOURS:-48}
+      CPU_WARN_PCT: ${CPU_WARN_PCT:-80}
+      CPU_CRIT_PCT: ${CPU_CRIT_PCT:-95}
+      MEM_WARN_PCT: ${MEM_WARN_PCT:-85}
+      MEM_CRIT_PCT: ${MEM_CRIT_PCT:-95}
+      DISK_WARN_PCT: ${DISK_WARN_PCT:-80}
+      DISK_CRIT_PCT: ${DISK_CRIT_PCT:-95}
+      GPU_TEMP_WARN_C: ${GPU_TEMP_WARN_C:-80}
+      GPU_TEMP_CRIT_C: ${GPU_TEMP_CRIT_C:-90}
+      GPU_MEM_WARN_PCT: ${GPU_MEM_WARN_PCT:-85}
+      GPU_MEM_CRIT_PCT: ${GPU_MEM_CRIT_PCT:-95}
+      CODEX_TIMEOUT_SECONDS: ${CODEX_TIMEOUT_SECONDS:-120}
+      WEB_PORT: ${WEB_PORT:-8080}
+      DASHBOARD_CHART_HOURS: ${DASHBOARD_CHART_HOURS:-6}
+      HISTORY_MAX_RUNS: ${HISTORY_MAX_RUNS:-500}
     cap_add:
       # Needed to chroot into /host/root for read-only host package-manager
       # / systemctl queries (updates.py). Docker grants this by default to

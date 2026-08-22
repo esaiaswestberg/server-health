@@ -89,6 +89,48 @@ docker compose run --rm health-check python3 -m app.main
 Useful for testing your `.env` and confirming a notification actually
 arrives at your ntfy topic.
 
+## Deploying via Portainer
+
+Every setting in `docker-compose.yml` is a `${VAR:-default}` substitution
+rather than something read from a physical `.env` file (via `env_file:`),
+specifically so this deploys cleanly from Portainer's "Stacks" feature
+(Git repository or Web editor), which doesn't create a `.env` file next to
+the compose file the way a local `docker compose up` does.
+
+1. Create the stack, pointing it at this repo (or pasting the compose file
+   into the web editor).
+2. In the stack's **Environment variables** section, add each setting you
+   want to override as a `KEY=value` pair - at minimum `NTFY_TOPIC`. This
+   works exactly like a `.env` file would; Portainer passes them through as
+   substitution variables when it runs the deploy, no file needed. See
+   `.env.example` for the full list of what's available and their
+   defaults - everything not set there falls back to the same default it
+   would locally.
+3. `NTFY_TOPIC` has no default and deploying without it set fails fast with
+   a clear error, rather than the container starting and the scheduled
+   check silently failing every run.
+4. The one setting that's still edited directly into `docker-compose.yml`
+   rather than as a variable is the Traefik basic-auth password hash - see
+   "Web dashboard" below for why, and do this in Portainer's stack editor
+   (the compose file content itself) rather than via environment variables.
+
+A real `.env` file (for plain `docker compose up`, not Portainer) still
+works exactly as before - Compose auto-loads one from the project root for
+substitution regardless of how the service's variables are declared.
+
+**Watch out for the relative `./data` volume** - Portainer resolves it
+relative to *its own* internal stack directory on the host (something like
+`/data/compose/<stack-id>/`), not an obviously discoverable project
+folder. It'll work fine either way (the SQLite database persists across
+container recreates as long as you don't delete the stack), but if you
+want it somewhere specific, change the `./data:/data` line in
+`docker-compose.yml` itself to an absolute host path - it's not
+variable-driven, unlike everything else here. `CODEX_AUTH_DIR` (default
+`~/.codex`) *is* variable-driven and does control where the Codex auth
+persists on the host - set it explicitly in the stack's environment
+variables if `~` resolving to some Portainer-internal user's home isn't
+what you want.
+
 ## Web dashboard
 
 > **No authentication of its own.** The dashboard is entirely read-only (no
