@@ -11,6 +11,7 @@ import psutil
 from . import codex_client, notify
 from . import state as state_module
 from .checks import Status, certs as check_certs, disk as check_disk
+from .checks import continuous as check_continuous
 from .checks import docker_checks
 from .checks import logs as check_logs
 from .checks import network as check_network
@@ -65,6 +66,10 @@ def load_config():
         "mem_crit_pct": _env_float("MEM_CRIT_PCT", 95),
         "disk_warn_pct": _env_float("DISK_WARN_PCT", 80),
         "disk_crit_pct": _env_float("DISK_CRIT_PCT", 95),
+        "gpu_temp_warn_c": _env_float("GPU_TEMP_WARN_C", 80),
+        "gpu_temp_crit_c": _env_float("GPU_TEMP_CRIT_C", 90),
+        "gpu_mem_warn_pct": _env_float("GPU_MEM_WARN_PCT", 85),
+        "gpu_mem_crit_pct": _env_float("GPU_MEM_CRIT_PCT", 95),
         "codex_timeout_seconds": _env_int("CODEX_TIMEOUT_SECONDS", 120),
     }
 
@@ -93,6 +98,7 @@ def main():
 
     check_results = []
     check_results += check_system.run(config)
+    check_results += check_continuous.run(config, state)
     check_results += check_disk.run(config)
     check_results += check_updates.run(config)
     check_results += docker_checks.run(config)

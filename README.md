@@ -1,11 +1,12 @@
 # server-health
 
-An AI-powered server health check. A long-running Docker container wakes up
-on a configurable cron schedule, inspects the host it runs on (CPU, memory,
-disk, Docker containers, pending OS updates, internet connectivity/speed,
-recent system log errors, and optionally TLS certificate expiry), hands the
-raw data to [Codex CLI](https://developers.openai.com/codex) for an AI
-diagnosis, and pushes the result to your phone/desktop via
+An AI-powered server health check. A long-running Docker container
+continuously samples CPU/memory/GPU usage in the background, and on a
+configurable cron schedule inspects the host it runs on (that continuous
+window, disk, Docker containers, pending OS updates, internet connectivity/
+speed, recent system log errors, and optionally TLS certificate expiry),
+hands the raw data to [Codex CLI](https://developers.openai.com/codex) for
+an AI diagnosis, and pushes the result to your phone/desktop via
 [ntfy](https://ntfy.sh).
 
 Codex is authenticated with your **ChatGPT account** (Plus/Pro/Team/Enterprise
@@ -15,13 +16,22 @@ login), not a metered API key.
 
 | Category | What |
 |---|---|
-| System | CPU %, load average, memory, swap, uptime |
+| System (continuous) | CPU % and memory %, sampled every `SAMPLE_INTERVAL_SECONDS` in the background and summarized as min/avg/max/p95 over the whole window since the last run |
+| GPU (continuous) | NVIDIA GPU utilization/VRAM/temperature, sampled the same way (skipped entirely if no GPU is detected) |
+| System (point-in-time) | Load average, swap, uptime |
 | Disk | Usage % + inodes per real host filesystem, `docker system df` breakdown |
 | Updates | Pending OS package updates, reboot-required flag, failed systemd units |
 | Docker | Container status/health, whether a newer image is available in the registry |
 | Network | Ping reachability/latency, throughput speed test (own cadence, see below) |
 | Logs | Warning/error-level lines from journald (or syslog fallback) since the last run |
 | Certs | Optional TLS expiry watch for a configured `host:port` list |
+
+The continuous CPU/memory/GPU sampling (`app/sampler.py`) is the one piece
+that isn't tied to the cron schedule at all - it runs for the whole
+container lifetime, recording a data point every few seconds to
+`./data/metrics.jsonl`. This means a 10-minute CPU spike or memory pressure
+event between two scheduled checks still shows up in the next report, where
+a single instant snapshot at check-time would have completely missed it.
 
 Every run, all of this is fed to Codex, which returns a structured verdict
 (`ok` / `warning` / `critical`) plus a plain-language summary, highlights,
@@ -85,7 +95,17 @@ See `.env.example` for the full list with defaults. The notable ones:
   so it runs on its own cadence (default daily) independent of `CRON_SCHEDULE`.
 - `CPU_WARN_PCT` / `CPU_CRIT_PCT` / `MEM_*` / `DISK_*` - thresholds used both
   to size what's handed to the AI and as the deterministic fallback status if
-  the Codex call itself fails.
+  the Codex call itself fails. CPU/memory are now checked against the window
+  since the last run (max for CRIT, max-or-avg for WARN), not an instant value.
+- `SAMPLE_INTERVAL_SECONDS` (default 10) / `METRICS_RETENTION_HOURS`
+  (default 48) - how often the background sampler records a CPU/memory/GPU
+  data point, and how long those samples are kept before being pruned.
+- `GPU_TEMP_WARN_C` / `GPU_TEMP_CRIT_C` / `GPU_MEM_WARN_PCT` /
+  `GPU_MEM_CRIT_PCT` - GPU status thresholds. Deliberately based on
+  temperature and VRAM usage, not utilization - a GPU sitting at 100%
+  compute utilization is often exactly what you want (transcoding,
+  inference), so treating that as a warning would just be noise. Ignored
+  entirely if no NVIDIA GPU is detected.
 
 ## A note on the mounts
 
@@ -107,10 +127,19 @@ See `.env.example` for the full list with defaults. The notable ones:
   the image. If your host doesn't use systemd, these mounts are harmless
   no-ops and the log/failed-unit checks fall back gracefully (log scanning
   falls back to grepping `/host/root/var/log/*`).
+- `/dev:/host/root/dev:ro` - lets `chroot /host/root nvidia-smi` reach the
+  NVIDIA device nodes for GPU sampling, using the host's own `nvidia-smi`
+  and matching driver libraries (no NVIDIA Container Toolkit needed). **This
+  is the broadest-access mount in the project** - unlike the others, it
+  exposes *every* host device node (disks, TTYs, everything under `/dev`),
+  not just the GPU, even mounted read-only. If your server has no GPU, just
+  delete this line from `docker-compose.yml` - the sampler detects the
+  missing `nvidia-smi` and skips GPU sampling gracefully either way.
 - `~/.codex:/root/.codex` - Codex's ChatGPT-account auth, read-write so it
   can refresh its own token in place.
-- `./data:/data` - small JSON state file (last run time, log-scan cursor,
-  last speed test time). Nothing sensitive.
+- `./data:/data` - state file (last run time, log-scan cursor, last speed
+  test time) and `metrics.jsonl` (the continuous CPU/memory/GPU samples).
+  Nothing sensitive.
 
 All of the above except the last two are mounted `:ro`.
 

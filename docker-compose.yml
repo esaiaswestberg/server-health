@@ -28,6 +28,12 @@ services:
       # systemd socket at /run/systemd/private.
       - /run/systemd:/host/root/run/systemd:ro
 
+      # GPU monitoring (app/sampler.py): lets `chroot /host/root nvidia-smi`
+      # reach the NVIDIA device nodes. This is the broadest-access mount in
+      # this project - it exposes every host device node, not just the GPU.
+      # See the README's "a note on the mounts" section before enabling.
+      - /dev:/host/root/dev:ro
+
       # Container status + image update checks. Read-only, but note this is
       # still root-equivalent access to the Docker daemon - see README.
       - /var/run/docker.sock:/var/run/docker.sock:ro

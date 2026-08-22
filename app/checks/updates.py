@@ -9,36 +9,16 @@ mount is `:ro`), so it can't modify anything on the host.
 """
 
 import os
-import subprocess
 
 from . import CheckResult, Status
+from ..hostexec import HOST_ROOT, chroot_run, host_has
 
-HOST_ROOT = "/host/root"
 REBOOT_REQUIRED_PATH = os.path.join(HOST_ROOT, "var/run/reboot-required")
 
 
-def _chroot_run(cmd, timeout=30):
-    """Run `cmd` inside the host root via chroot. Returns CompletedProcess or None."""
-    if not os.path.isdir(HOST_ROOT):
-        return None
-    try:
-        return subprocess.run(
-            ["chroot", HOST_ROOT] + cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except (FileNotFoundError, PermissionError, subprocess.TimeoutExpired):
-        return None
-
-
-def _host_has(path_in_host: str) -> bool:
-    return os.path.exists(os.path.join(HOST_ROOT, path_in_host.lstrip("/")))
-
-
 def _pending_updates_check() -> CheckResult:
-    if _host_has("usr/bin/apt") or _host_has("usr/bin/apt-get"):
-        proc = _chroot_run(["apt", "list", "--upgradable"], timeout=60)
+    if host_has("usr/bin/apt") or host_has("usr/bin/apt-get"):
+        proc = chroot_run(["apt", "list", "--upgradable"], timeout=60)
         if proc is None or proc.returncode != 0:
             return CheckResult(
                 category="updates", name="pending-updates", status=Status.OK,
@@ -54,9 +34,9 @@ def _pending_updates_check() -> CheckResult:
             data={"count": count, "manager": "apt"},
         )
 
-    if _host_has("usr/bin/dnf") or _host_has("usr/bin/yum"):
-        binary = "dnf" if _host_has("usr/bin/dnf") else "yum"
-        proc = _chroot_run([binary, "check-update", "--quiet"], timeout=90)
+    if host_has("usr/bin/dnf") or host_has("usr/bin/yum"):
+        binary = "dnf" if host_has("usr/bin/dnf") else "yum"
+        proc = chroot_run([binary, "check-update", "--quiet"], timeout=90)
         if proc is None:
             return CheckResult(
                 category="updates", name="pending-updates", status=Status.OK,
@@ -76,8 +56,8 @@ def _pending_updates_check() -> CheckResult:
             data={"count": count, "manager": binary},
         )
 
-    if _host_has("usr/bin/pacman"):
-        proc = _chroot_run(["pacman", "-Qu"], timeout=60)
+    if host_has("usr/bin/pacman"):
+        proc = chroot_run(["pacman", "-Qu"], timeout=60)
         if proc is None:
             return CheckResult(
                 category="updates", name="pending-updates", status=Status.OK,
@@ -110,7 +90,7 @@ def _reboot_required_check() -> CheckResult:
 
 
 def _failed_units_check() -> CheckResult:
-    proc = _chroot_run(["systemctl", "--failed", "--no-legend", "--plain"], timeout=20)
+    proc = chroot_run(["systemctl", "--failed", "--no-legend", "--plain"], timeout=20)
     if proc is None or proc.returncode != 0:
         return CheckResult(
             category="updates", name="failed-systemd-units", status=Status.OK,

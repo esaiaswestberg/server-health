@@ -9,11 +9,10 @@ hosts, or no persistent journal).
 import glob
 import os
 import re
-import subprocess
 
 from . import CheckResult, Status
+from ..hostexec import HOST_ROOT, chroot_run
 
-HOST_ROOT = "/host/root"
 _ERROR_PATTERN = re.compile(r"\b(error|err|fail(ed|ure)?|critical|crit|panic)\b", re.IGNORECASE)
 _FALLBACK_LOG_GLOBS = [
     "var/log/syslog",
@@ -23,20 +22,8 @@ _FALLBACK_LOG_GLOBS = [
 ]
 
 
-def _chroot_run(cmd, timeout=30):
-    if not os.path.isdir(HOST_ROOT):
-        return None
-    try:
-        return subprocess.run(
-            ["chroot", HOST_ROOT] + cmd,
-            capture_output=True, text=True, timeout=timeout,
-        )
-    except (FileNotFoundError, PermissionError, subprocess.TimeoutExpired):
-        return None
-
-
 def _journalctl_lines(since_iso: str, max_lines: int):
-    proc = _chroot_run(
+    proc = chroot_run(
         ["journalctl", "--no-pager", "-p", "warning", "--since", since_iso, "-o", "short-iso"],
         timeout=30,
     )
