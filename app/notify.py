@@ -1,8 +1,8 @@
 """Formats a health report and pushes it to ntfy."""
 
-import socket
-
 import requests
+
+from .hostexec import get_hostname
 
 _PRIORITY = {"ok": "3", "warning": "4", "critical": "5"}
 _TAGS = {"ok": "white_check_mark", "warning": "warning", "critical": "rotating_light"}
@@ -29,7 +29,7 @@ def send(report: dict, config) -> None:
     if status == "ok" and not config["notify_on_ok"]:
         return
 
-    hostname = socket.gethostname()
+    hostname = get_hostname()
     url = f"{config['ntfy_url'].rstrip('/')}/{config['ntfy_topic']}"
     headers = {
         "Title": f"{hostname}: {report.get('title', 'Health check')}",

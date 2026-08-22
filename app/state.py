@@ -1,15 +1,12 @@
-"""Small JSON-file-backed state store for cross-run bookkeeping.
-
-Tracks things that need to survive between cron invocations: when logs were
-last scanned (so we only report new lines) and when the speed test last ran
-(so it can have its own, less frequent cadence than the main schedule).
+"""Small key/value state store (SQLite-backed, see app/db.py) for cross-run
+bookkeeping: when logs were last scanned (so we only report new lines) and
+when the speed test last ran (so it can have its own, less frequent cadence
+than the main schedule).
 """
 
-import json
-import os
 from datetime import datetime, timezone
 
-STATE_PATH = os.environ.get("STATE_PATH", "/data/state.json")
+from . import db
 
 _DEFAULTS = {
     "last_run": None,
@@ -19,24 +16,21 @@ _DEFAULTS = {
 
 
 def load() -> dict:
-    if not os.path.exists(STATE_PATH):
-        return dict(_DEFAULTS)
-    try:
-        with open(STATE_PATH, "r") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return dict(_DEFAULTS)
-    merged = dict(_DEFAULTS)
-    merged.update(data)
-    return merged
+    state = dict(_DEFAULTS)
+    with db.connect() as conn:
+        rows = conn.execute("SELECT key, value FROM state").fetchall()
+    for row in rows:
+        state[row["key"]] = row["value"]
+    return state
 
 
 def save(state: dict) -> None:
-    os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
-    tmp_path = STATE_PATH + ".tmp"
-    with open(tmp_path, "w") as f:
-        json.dump(state, f, indent=2)
-    os.replace(tmp_path, STATE_PATH)
+    with db.connect() as conn:
+        conn.executemany(
+            "INSERT INTO state (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            list(state.items()),
+        )
 
 
 def now_iso() -> str:

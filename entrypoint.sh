@@ -10,6 +10,7 @@ CRON_SCHEDULE="${CRON_SCHEDULE:-0 * * * *}"
 # config vars this app cares about into a file the cron job sources before
 # running. printf '%q' gives shell-safe quoting for values with spaces/quotes.
 ENV_VARS=(
+    DB_PATH
     NTFY_URL
     NTFY_TOPIC
     NTFY_TOKEN
@@ -32,6 +33,7 @@ ENV_VARS=(
     GPU_MEM_WARN_PCT
     GPU_MEM_CRIT_PCT
     CODEX_TIMEOUT_SECONDS
+    HISTORY_MAX_RUNS
 )
 
 : > /opt/health-check/.env.runtime
@@ -50,6 +52,13 @@ echo "[entrypoint] starting continuous CPU/memory/GPU sampler"
 ( cd /opt/health-check && while true; do
     python3 -m app.sampler >> /proc/1/fd/1 2>> /proc/1/fd/2
     echo "[entrypoint] sampler exited, restarting in 5s" >> /proc/1/fd/1
+    sleep 5
+done ) &
+
+echo "[entrypoint] starting web dashboard on port ${WEB_PORT:-8080}"
+( cd /opt/health-check && while true; do
+    python3 -m app.web >> /proc/1/fd/1 2>> /proc/1/fd/2
+    echo "[entrypoint] web dashboard exited, restarting in 5s" >> /proc/1/fd/1
     sleep 5
 done ) &
 

@@ -10,8 +10,9 @@ goes silent just because the AI step failed.
 import json
 import os
 import re
-import socket
 import subprocess
+
+from .hostexec import get_hostname
 
 SCHEMA_PATH = os.environ.get(
     "HEALTH_SCHEMA_PATH",
@@ -66,7 +67,7 @@ def _extract_json(text: str):
 
 def get_report(check_results, config):
     """Returns (report_dict, None) on success, or (None, error_message) on failure."""
-    hostname = socket.gethostname()
+    hostname = get_hostname()
     prompt_data = _build_prompt(check_results, hostname)
 
     cmd = [

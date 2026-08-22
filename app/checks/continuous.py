@@ -4,13 +4,10 @@ snapshot that could miss what happened in between (e.g. a 10-minute CPU
 spike that's already over by the time the scheduled check runs).
 """
 
-import json
-import os
 from datetime import datetime, timedelta, timezone
 
 from . import CheckResult, Status
-
-METRICS_PATH = os.environ.get("METRICS_PATH", "/data/metrics.jsonl")
+from ..metrics_store import load_samples
 
 
 def _percentile(values, pct):
@@ -23,25 +20,6 @@ def _percentile(values, pct):
     if f == c:
         return s[f]
     return s[f] + (s[c] - s[f]) * (k - f)
-
-
-def _load_samples(since):
-    if not os.path.exists(METRICS_PATH):
-        return []
-    samples = []
-    with open(METRICS_PATH, "r") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-                ts = datetime.fromisoformat(entry["ts"])
-            except (json.JSONDecodeError, KeyError, ValueError):
-                continue
-            if since is None or ts > since:
-                samples.append(entry)
-    return samples
 
 
 def _window_stat_line(values, unit=""):
@@ -130,7 +108,7 @@ def run(config, state) -> list:
     if since is None:
         since = datetime.now(timezone.utc) - timedelta(hours=1)
 
-    samples = _load_samples(since)
+    samples = load_samples(since)
     if not samples:
         return [
             CheckResult(

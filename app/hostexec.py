@@ -9,6 +9,7 @@ the image, and the read-only mount means it can't modify anything.
 """
 
 import os
+import socket
 import subprocess
 
 HOST_ROOT = "/host/root"
@@ -31,3 +32,17 @@ def chroot_run(cmd, timeout=30):
 
 def host_has(path_in_host: str) -> bool:
     return os.path.exists(os.path.join(HOST_ROOT, path_in_host.lstrip("/")))
+
+
+def get_hostname() -> str:
+    """The *host's* hostname, not the container's own (Docker gives every
+    container its own UTS namespace, so socket.gethostname() alone would
+    return something like a random container ID)."""
+    try:
+        with open(os.path.join(HOST_ROOT, "etc/hostname")) as f:
+            name = f.read().strip()
+            if name:
+                return name
+    except OSError:
+        pass
+    return socket.gethostname()

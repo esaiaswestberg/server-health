@@ -36,3 +36,12 @@ class CheckResult:
 
     def to_prompt_line(self) -> str:
         return f"- [{self.status.value.upper()}] {self.category}/{self.name}: {self.note}"
+
+    def to_dict(self) -> dict:
+        return {
+            "category": self.category,
+            "name": self.name,
+            "status": self.status.value,
+            "note": self.note,
+            "data": self.data,
+        }

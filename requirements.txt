@@ -2,3 +2,4 @@ psutil>=5.9
 requests>=2.31
 speedtest-cli>=2.1
 PyYAML>=6.0
+Flask>=3.0

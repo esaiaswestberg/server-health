@@ -6,8 +6,9 @@ configurable cron schedule inspects the host it runs on (that continuous
 window, disk, Docker containers, pending OS updates, internet connectivity/
 speed, recent system log errors, and optionally TLS certificate expiry),
 hands the raw data to [Codex CLI](https://developers.openai.com/codex) for
-an AI diagnosis, and pushes the result to your phone/desktop via
-[ntfy](https://ntfy.sh).
+an AI diagnosis, pushes the result to your phone/desktop via
+[ntfy](https://ntfy.sh), and serves a live web dashboard of everything it
+just found.
 
 Codex is authenticated with your **ChatGPT account** (Plus/Pro/Team/Enterprise
 login), not a metered API key.
@@ -28,10 +29,10 @@ login), not a metered API key.
 
 The continuous CPU/memory/GPU sampling (`app/sampler.py`) is the one piece
 that isn't tied to the cron schedule at all - it runs for the whole
-container lifetime, recording a data point every few seconds to
-`./data/metrics.jsonl`. This means a 10-minute CPU spike or memory pressure
-event between two scheduled checks still shows up in the next report, where
-a single instant snapshot at check-time would have completely missed it.
+container lifetime, recording a data point every few seconds to the SQLite
+database. This means a 10-minute CPU spike or memory pressure event between
+two scheduled checks still shows up in the next report, where a single
+instant snapshot at check-time would have completely missed it.
 
 Every run, all of this is fed to Codex, which returns a structured verdict
 (`ok` / `warning` / `critical`) plus a plain-language summary, highlights,
@@ -82,6 +83,40 @@ docker compose run --rm health-check python3 -m app.main
 Useful for testing your `.env` and confirming a notification actually
 arrives at your ntfy topic.
 
+## Web dashboard
+
+> **No authentication.** The dashboard at `http://<host>:8080/` is entirely
+> read-only (no buttons, no forms, nothing to interact with) but it has
+> **no login of its own**, and by default `docker-compose.yml` publishes it
+> on `0.0.0.0` - reachable from your whole LAN the moment the container
+> starts. It displays real information about your server: hostnames,
+> container names, disk paths, and raw log-line snippets among them. Put a
+> reverse proxy with basic auth (or your own SSO/auth setup) in front of it
+> before treating it as anything other than "trusted LAN only", and
+> definitely before ever exposing it to the internet.
+
+It shows the same things ntfy gets notified about, live and continuously:
+
+- The latest AI report (status badge, summary, highlights, recommendations).
+- Every individual check result from the most recent run, grouped by category.
+- A table of recent runs, so you can see status changes over time at a glance.
+- Charts of CPU, memory, and per-GPU utilization/VRAM/temperature over the
+  last `DASHBOARD_CHART_HOURS` (default 6), built from the same continuous
+  samples the scheduled check summarizes.
+
+It's a small Flask app (`app/web.py`), started alongside the sampler and
+cron by `entrypoint.sh`. The page itself polls itself every 30 seconds via
+[htmx](https://htmx.org) for the status/checks/history, and separately
+re-fetches `/api/metrics` every 30 seconds to redraw the charts
+([Chart.js](https://www.chartjs.org), loaded from a CDN by the browser -
+nothing added to the image for it). There's nothing to click; just leave it
+open on a second monitor or check in on it.
+
+If you already run Traefik (see the auto-discovery feature above), the
+commented-out example in `docker-compose.yml` shows how to front the
+dashboard with it and a basic-auth middleware instead of publishing the
+port directly - see the comments there.
+
 ## Configuration
 
 See `.env.example` for the full list with defaults. The notable ones:
@@ -121,6 +156,12 @@ See `.env.example` for the full list with defaults. The notable ones:
   container labels. Only the file provider is covered (not Consul/etcd/
   Kubernetes CRD/etc.), and directories aren't scanned recursively, matching
   Traefik's own file-provider behavior. Unset by default (skipped).
+- `WEB_PORT` (default 8080) - the dashboard's port. See the security note
+  in "Web dashboard" above before changing how it's published.
+- `DASHBOARD_CHART_HOURS` (default 6) - how much history the dashboard's
+  charts show.
+- `HISTORY_MAX_RUNS` (default 500) - how many past scheduled runs (report +
+  full check breakdown) are kept for the dashboard's history table.
 
 ## A note on the mounts
 
@@ -152,9 +193,8 @@ See `.env.example` for the full list with defaults. The notable ones:
   missing `nvidia-smi` and skips GPU sampling gracefully either way.
 - `~/.codex:/root/.codex` - Codex's ChatGPT-account auth, read-write so it
   can refresh its own token in place.
-- `./data:/data` - state file (last run time, log-scan cursor, last speed
-  test time) and `metrics.jsonl` (the continuous CPU/memory/GPU samples).
-  Nothing sensitive.
+- `./data:/data` - the SQLite database (state, continuous CPU/memory/GPU
+  samples, run history for the web dashboard). Nothing sensitive.
 
 All of the above except the last two are mounted `:ro`.
 

@@ -8,7 +8,7 @@ import os
 
 import psutil
 
-from . import codex_client, notify
+from . import codex_client, db, history, notify
 from . import state as state_module
 from .checks import Status, certs as check_certs, disk as check_disk
 from .checks import continuous as check_continuous
@@ -74,6 +74,9 @@ def load_config():
         "gpu_mem_warn_pct": _env_float("GPU_MEM_WARN_PCT", 85),
         "gpu_mem_crit_pct": _env_float("GPU_MEM_CRIT_PCT", 95),
         "codex_timeout_seconds": _env_int("CODEX_TIMEOUT_SECONDS", 120),
+        "web_port": _env_int("WEB_PORT", 8080),
+        "dashboard_chart_hours": _env_float("DASHBOARD_CHART_HOURS", 6),
+        "history_max_runs": _env_int("HISTORY_MAX_RUNS", 500),
     }
 
 
@@ -95,6 +98,7 @@ def _deterministic_report(check_results, error_note=None):
 
 
 def main():
+    db.init_db()
     _configure_procfs()
     config = load_config()
     state = state_module.load()
@@ -123,8 +127,17 @@ def main():
     except Exception:
         log.exception("failed to send ntfy notification")
 
-    state["last_run"] = state_module.now_iso()
-    state["last_log_scan"] = state_module.now_iso()
+    run_ts = state_module.now_iso()
+    try:
+        history.append_run(
+            {"ts": run_ts, "report": report, "checks": [r.to_dict() for r in check_results]},
+            max_runs=config["history_max_runs"],
+        )
+    except Exception:
+        log.exception("failed to persist run history for the web dashboard")
+
+    state["last_run"] = run_ts
+    state["last_log_scan"] = run_ts
     state_module.save(state)
 
 

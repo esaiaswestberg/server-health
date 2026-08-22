@@ -1,15 +1,14 @@
 """Continuous background sampler: records CPU/memory/GPU utilization every
-SAMPLE_INTERVAL_SECONDS to /data/metrics.jsonl, so the scheduled check can
-summarize the whole window between runs (min/avg/max/p95) instead of a
+SAMPLE_INTERVAL_SECONDS to SQLite (see app/db.py), so the scheduled check
+can summarize the whole window between runs (min/avg/max/p95) instead of a
 single instant snapshot that could miss a transient spike entirely.
 
 Started once by entrypoint.sh (wrapped in a restart loop), not by cron -
-this process runs for the container's whole lifetime. `app/checks/continuous.py`
-is the reader; this module is the sole writer, and never mutates the file
-except by atomic replace during pruning, so the two never race destructively.
+this process runs for the container's whole lifetime. SQLite's WAL mode
+lets the scheduled check and the web dashboard read concurrently without
+blocking on these writes.
 """
 
-import json
 import logging
 import os
 import time
@@ -17,12 +16,12 @@ from datetime import datetime, timedelta, timezone
 
 import psutil
 
+from . import db
 from .hostexec import chroot_run
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("sampler")
 
-METRICS_PATH = os.environ.get("METRICS_PATH", "/data/metrics.jsonl")
 SAMPLE_INTERVAL_SECONDS = float(os.environ.get("SAMPLE_INTERVAL_SECONDS", 10))
 METRICS_RETENTION_HOURS = float(os.environ.get("METRICS_RETENTION_HOURS", 48))
 PRUNE_EVERY_N_SAMPLES = 360  # ~1h at the default 10s interval
@@ -72,7 +71,7 @@ def _sample_gpu():
 
 def _take_sample(gpu_available: bool) -> dict:
     sample = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(timezone.utc),
         "cpu_pct": psutil.cpu_percent(interval=None),
         "mem_pct": psutil.virtual_memory().percent,
     }
@@ -83,48 +82,37 @@ def _take_sample(gpu_available: bool) -> dict:
     return sample
 
 
-def _append_sample(sample: dict):
-    os.makedirs(os.path.dirname(METRICS_PATH), exist_ok=True)
-    with open(METRICS_PATH, "a") as f:
-        f.write(json.dumps(sample) + "\n")
+def _insert_sample(sample: dict):
+    ts_iso = sample["ts"].isoformat()
+    with db.connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO metrics (ts, cpu_pct, mem_pct) VALUES (?, ?, ?)",
+            (ts_iso, sample["cpu_pct"], sample["mem_pct"]),
+        )
+        metric_id = cursor.lastrowid
+        for gpu in sample.get("gpu", []):
+            conn.execute(
+                "INSERT INTO gpu_metrics (metric_id, ts, gpu_index, util_pct, mem_pct, temp_c) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (metric_id, ts_iso, gpu["index"], gpu["util_pct"], gpu["mem_pct"], gpu["temp_c"]),
+            )
 
 
 def _prune():
-    """Rewrites metrics.jsonl keeping only samples within the retention
-    window, via temp-file + atomic os.replace so a concurrent reader
-    (app/checks/continuous.py) never sees a torn/partial file."""
-    if not os.path.exists(METRICS_PATH):
-        return
-
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=METRICS_RETENTION_HOURS)
-    kept = []
-    dropped = 0
-    with open(METRICS_PATH, "r") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                ts = datetime.fromisoformat(json.loads(line)["ts"])
-            except (json.JSONDecodeError, KeyError, ValueError):
-                continue
-            if ts >= cutoff:
-                kept.append(line)
-            else:
-                dropped += 1
-
-    if dropped == 0:
-        return
-
-    tmp_path = METRICS_PATH + ".tmp"
-    with open(tmp_path, "w") as f:
-        for line in kept:
-            f.write(line + "\n")
-    os.replace(tmp_path, METRICS_PATH)
-    log.info("pruned %d sample(s) older than %sh (%d remaining)", dropped, METRICS_RETENTION_HOURS, len(kept))
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=METRICS_RETENTION_HOURS)).isoformat()
+    with db.connect() as conn:
+        conn.execute(
+            "DELETE FROM gpu_metrics WHERE metric_id IN (SELECT id FROM metrics WHERE ts < ?)",
+            (cutoff,),
+        )
+        cursor = conn.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,))
+        dropped = cursor.rowcount
+    if dropped:
+        log.info("pruned %d sample(s) older than %sh", dropped, METRICS_RETENTION_HOURS)
 
 
 def main():
+    db.init_db()
     _configure_procfs()
     psutil.cpu_percent(interval=None)  # prime it - the first call's own value is meaningless
 
@@ -138,9 +126,9 @@ def main():
     while True:
         time.sleep(SAMPLE_INTERVAL_SECONDS)
         try:
-            _append_sample(_take_sample(gpu_available))
+            _insert_sample(_take_sample(gpu_available))
         except Exception:
-            log.exception("failed to take/append sample")
+            log.exception("failed to take/insert sample")
             continue
 
         count += 1
