@@ -51,6 +51,12 @@ a plain report built from the raw threshold checks so you still get notified.
    docker compose build
    ```
 
+   Or skip building locally and use the image a GitHub Actions workflow
+   publishes to GHCR on every push to `main`
+   (`ghcr.io/esaiaswestberg/server-health:latest`) - swap `build: .` for
+   `image: ghcr.io/esaiaswestberg/server-health:latest` in
+   `docker-compose.yml` if you'd rather pull than build.
+
 3. Log in to Codex with your ChatGPT account. This has to be interactive
    once, since headless `codex exec` can't complete an OAuth login itself:
 
