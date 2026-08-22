@@ -140,8 +140,14 @@ Three things need setting up once:
    `docker network create traefik`.
 
 2. **The hostname.** Set `DASHBOARD_DOMAIN` in `.env` to whatever hostname
-   you want the dashboard reachable at, e.g. `health.yourdomain.com`. If
-   your other Traefik-routed services set explicit `entrypoints` or
+   you want the dashboard reachable at, e.g. `health.yourdomain.com`. The
+   `labels:` block already includes `routers.server-health.tls=true` -
+   **don't remove it**, even if you're not using a custom cert resolver.
+   Without it, Traefik's HTTPS router matching silently ignores this
+   router entirely (it'll still show up fine in the Traefik dashboard as a
+   valid, "Success"-status router - the failure only shows up as every
+   request 404ing, which is a nasty one to debug). If your other
+   Traefik-routed services also set explicit `entrypoints` or
    `tls.certresolver` labels, add matching ones for this service too - see
    the commented example right in `docker-compose.yml`'s `labels:` block.
 

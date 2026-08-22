@@ -24,11 +24,21 @@ services:
       - traefik.http.routers.server-health.rule=Host(`${DASHBOARD_DOMAIN:-health.example.com}`)
       - traefik.http.routers.server-health.middlewares=server-health-auth
       - traefik.http.services.server-health.loadbalancer.server.port=8080
+      # Required, not optional: without this, Traefik's HTTPS router muxer
+      # doesn't consider this router a TLS candidate at all (even on an
+      # already-TLS entrypoint), so requests fall through to Traefik's
+      # default 404 instead of ever reaching this service. Confirmed by
+      # comparing against a real Traefik instance's dynamic config - every
+      # other TLS-routed service there carried a "tls" object; a router
+      # without one silently never matches HTTPS requests.
+      - traefik.http.routers.server-health.tls=true
       # REPLACE this with your own htpasswd hash - see the README. Every
       # single "$" in the hash htpasswd printed needs to become "$$" here.
       - traefik.http.middlewares.server-health-auth.basicauth.users=admin:$$apr1$$REPLACE$$WITH-YOUR-REAL-HASH
-      # Add your entrypoint/certresolver labels here too if your other
-      # Traefik-routed services use them, e.g.:
+      # These two are genuinely optional - only add them if your other
+      # Traefik-routed services set them explicitly too (check their
+      # labels/dynamic config to be sure; entrypoints in particular often
+      # resolve to a sensible default without being set explicitly):
       # - traefik.http.routers.server-health.entrypoints=websecure
       # - traefik.http.routers.server-health.tls.certresolver=letsencrypt
     #
