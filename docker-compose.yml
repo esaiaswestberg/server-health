@@ -10,22 +10,32 @@ services:
       # / systemctl queries (updates.py). Docker grants this by default to
       # root containers anyway; listed explicitly for clarity.
       - SYS_CHROOT
-    ports:
-      # The web dashboard (app/web.py) - it has NO authentication of its
-      # own. Published on all interfaces by default; see the README's "Web
-      # dashboard" section before exposing this beyond a trusted LAN.
-      - "${WEB_PORT:-8080}:8080"
-    # If you're fronting this with Traefik (see the Traefik auto-discovery
-    # feature elsewhere in this project) instead of publishing the port
-    # above, drop the `ports:` block and uncomment something like this so
-    # Traefik reaches the dashboard over the Docker network directly, with
-    # basic auth in front:
-    # labels:
-    #   - traefik.enable=true
-    #   - traefik.http.routers.server-health.rule=Host(`health.example.com`)
-    #   - traefik.http.routers.server-health.middlewares=server-health-auth
-    #   - traefik.http.services.server-health.loadbalancer.server.port=8080
-    #   - traefik.http.middlewares.server-health-auth.basicauth.users=admin:$$apr1$$replace-with-a-real-htpasswd-hash
+    # Routed through Traefik with basic auth, on the network Traefik itself
+    # is attached to (TRAEFIK_NETWORK in .env, default "traefik") - no port
+    # published on the host, so the *only* way in is through Traefik+auth.
+    # See the README's "Web dashboard" section for one-time setup before
+    # starting this - in particular, the basicauth.users line below needs
+    # your real htpasswd hash edited in directly (NOT via .env - Compose's
+    # .env-file interpolation has known bugs with "$"-heavy values passed
+    # through into labels like this one, so this is the one place in the
+    # whole project that isn't environment-variable-driven).
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.server-health.rule=Host(`${DASHBOARD_DOMAIN:-health.example.com}`)
+      - traefik.http.routers.server-health.middlewares=server-health-auth
+      - traefik.http.services.server-health.loadbalancer.server.port=8080
+      # REPLACE this with your own htpasswd hash - see the README. Every
+      # single "$" in the hash htpasswd printed needs to become "$$" here.
+      - traefik.http.middlewares.server-health-auth.basicauth.users=admin:$$apr1$$REPLACE$$WITH-YOUR-REAL-HASH
+      # Add your entrypoint/certresolver labels here too if your other
+      # Traefik-routed services use them, e.g.:
+      # - traefik.http.routers.server-health.entrypoints=websecure
+      # - traefik.http.routers.server-health.tls.certresolver=letsencrypt
+    #
+    # Not using Traefik? Comment out the `labels:` block above and use a
+    # published port instead (still no auth of its own - see the README):
+    # ports:
+    #   - "${WEB_PORT:-8080}:8080"
     volumes:
       # Codex CLI auth (ChatGPT account login). Persisted on the host so the
       # container never has to re-run an interactive login. Codex refreshes
@@ -62,3 +72,8 @@ services:
       # /:/host/root bind above; this is only needed on hosts where
       # /var/log/journal happens to live on its own mount.
       - /var/log/journal:/host/root/var/log/journal:ro
+
+networks:
+  default:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}
