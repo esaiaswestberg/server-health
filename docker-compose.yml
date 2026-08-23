@@ -45,6 +45,18 @@ services:
       # / systemctl queries (updates.py). Docker grants this by default to
       # root containers anyway; listed explicitly for clarity.
       - SYS_CHROOT
+    # Bind-mounting /dev (below) only makes the NVIDIA device nodes
+    # *visible* in the container - it does NOT grant permission to actually
+    # open() them, which is a separate cgroup-level restriction Docker
+    # applies by default. Without this, `nvidia-smi` fails with "Failed to
+    # initialize NVML: Unknown Error" even though the device files show up
+    # fine under /host/root/dev. 195 is NVIDIA's fixed device major number
+    # (covers /dev/nvidiactl and /dev/nvidia0..N); this is the standard
+    # narrow fix for GPU device access without pulling in the full NVIDIA
+    # Container Toolkit or resorting to `privileged: true`. Delete this
+    # block if your server has no GPU.
+    device_cgroup_rules:
+      - "c 195:* rmw"
     # Routed through Traefik with basic auth, on the network Traefik itself
     # is attached to (TRAEFIK_NETWORK in .env, default "traefik") - no port
     # published on the host, so the *only* way in is through Traefik+auth.
