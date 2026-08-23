@@ -37,6 +37,12 @@ ENV_VARS=(
 )
 
 : > /opt/health-check/.env.runtime
+# Cron's own default PATH is minimal (typically just /usr/bin:/bin) and
+# doesn't include /usr/local/bin, where `npm install -g` puts the `codex`
+# binary - without this, the scheduled check can't find it even though
+# running it manually works fine. Capture the container's real PATH (as
+# resolved here, before cron strips it down) explicitly.
+printf 'export PATH=%q\n' "$PATH" >> /opt/health-check/.env.runtime
 for var in "${ENV_VARS[@]}"; do
     if [ -n "${!var-}" ]; then
         printf 'export %s=%q\n' "$var" "${!var}" >> /opt/health-check/.env.runtime

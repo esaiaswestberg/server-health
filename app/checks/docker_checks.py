@@ -8,11 +8,14 @@ layers - cheap compared to an actual `docker pull`.
 
 import json
 import os
+import re
 import subprocess
 
 from . import CheckResult, Status
 
 _ENV = dict(os.environ, DOCKER_CLI_EXPERIMENTAL="enabled")
+# `docker ps`'s Status field embeds the exit code, e.g. "Exited (0) 30 hours ago".
+_EXIT_CODE_PATTERN = re.compile(r"Exited \((\d+)\)")
 
 
 def _docker_available() -> bool:
@@ -48,7 +51,14 @@ def _status_check(container: dict) -> CheckResult:
 
     if state == "running":
         status = Status.CRIT if "unhealthy" in status_text.lower() else Status.OK
-    elif state in ("exited", "dead"):
+    elif state == "exited":
+        # Exit code 0 is a clean, successful exit - a completed one-off
+        # container (a migration job, a `docker run --rm` utility, etc.),
+        # not a failure. Only a non-zero exit code means something crashed.
+        # An unparseable status is treated as a failure too, to fail safe.
+        match = _EXIT_CODE_PATTERN.search(status_text)
+        status = Status.OK if match and match.group(1) == "0" else Status.CRIT
+    elif state == "dead":
         status = Status.CRIT
     else:
         status = Status.WARN
