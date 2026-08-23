@@ -297,8 +297,17 @@ See `.env.example` for the full list with defaults. The notable ones:
   is the broadest-access mount in the project** - unlike the others, it
   exposes *every* host device node (disks, TTYs, everything under `/dev`),
   not just the GPU, even mounted read-only. If your server has no GPU, just
-  delete this line from `docker-compose.yml` - the sampler detects the
-  missing `nvidia-smi` and skips GPU sampling gracefully either way.
+  delete this line (and the `device_cgroup_rules:` block right above it)
+  from `docker-compose.yml` - the sampler detects the missing `nvidia-smi`
+  and skips GPU sampling gracefully either way.
+- `device_cgroup_rules: ["c 195:* rmw"]` - the `/dev` bind mount above only
+  makes the GPU device nodes *visible*; Docker's cgroup device controller
+  separately blocks actually opening them by default, regardless of the
+  mount. Without this, GPU sampling silently stays off
+  (`nvidia-smi` fails with `Failed to initialize NVML: Unknown Error`, even
+  though `ls /host/root/dev` shows the device files just fine). `195` is
+  NVIDIA's fixed device major number - this grants exactly the access
+  needed, without `privileged: true` or the full NVIDIA Container Toolkit.
 - `~/.codex:/root/.codex` - Codex's ChatGPT-account auth, read-write so it
   can refresh its own token in place.
 - `./data:/data` - the SQLite database (state, continuous CPU/memory/GPU
