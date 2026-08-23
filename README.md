@@ -118,18 +118,18 @@ A real `.env` file (for plain `docker compose up`, not Portainer) still
 works exactly as before - Compose auto-loads one from the project root for
 substitution regardless of how the service's variables are declared.
 
-**Watch out for the relative `./data` volume** - Portainer resolves it
-relative to *its own* internal stack directory on the host (something like
-`/data/compose/<stack-id>/`), not an obviously discoverable project
-folder. It'll work fine either way (the SQLite database persists across
-container recreates as long as you don't delete the stack), but if you
-want it somewhere specific, change the `./data:/data` line in
-`docker-compose.yml` itself to an absolute host path - it's not
-variable-driven, unlike everything else here. `CODEX_AUTH_DIR` (default
-`~/.codex`) *is* variable-driven and does control where the Codex auth
-persists on the host - set it explicitly in the stack's environment
-variables if `~` resolving to some Portainer-internal user's home isn't
-what you want.
+**Set `DATA_DIR` to an absolute host path in Portainer - don't leave it as
+the relative default.** Portainer versions every stack update into its own
+subfolder (e.g. `.../v1/docker-compose.yml`, then `.../v2/...` on the next
+update). A relative `./data` resolves against that folder, so it can point
+at a different, empty directory each time you update the stack - the
+scheduled-check history and continuous CPU/memory/GPU samples silently
+reset instead of persisting. Set `DATA_DIR` in the stack's environment
+variables to something stable and absolute, e.g. `/opt/server-health/data`
+(the directory is created automatically if it doesn't exist). Same
+reasoning applies to `CODEX_AUTH_DIR` (default `~/.codex`) - set it
+explicitly too rather than relying on `~` resolving to wherever Portainer
+happens to run as.
 
 ## Web dashboard
 
