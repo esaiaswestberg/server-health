@@ -88,6 +88,19 @@ def fragment():
     return render_template("_fragment.html", **_dashboard_context())
 
 
+@app.route("/run/<int:run_id>")
+def run_detail(run_id):
+    run = history.load_by_id(run_id)
+    context = {
+        "hostname": get_hostname(),
+        "run": run,
+        "relative": _relative_time(run["ts"]) if run else None,
+        "grouped_checks": _grouped_checks(run["checks"]) if run else {},
+    }
+    status_code = 200 if run else 404
+    return render_template("run_detail.html", **context), status_code
+
+
 def _downsample(points, max_points=300):
     """Buckets (timestamp, value) points into at most max_points,
     averaging each bucket, so long windows don't ship thousands of points

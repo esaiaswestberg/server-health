@@ -1,0 +1,48 @@
+{% macro report_card(run, relative, heading) %}
+<div class="card status-card status-{{ run.report.status }}">
+  <div class="status-header">
+    <span class="badge badge-{{ run.report.status }}">{{ run.report.status }}</span>
+    <h2>{{ run.report.title }}</h2>
+  </div>
+  <p class="timestamp">{{ heading | default("Checked", true) }} {{ relative }} ({{ run.ts }})</p>
+  <p class="summary">{{ run.report.summary }}</p>
+
+  {% if run.report.highlights %}
+  <div class="sub-block">
+    <h3>Highlights</h3>
+    <ul>
+      {% for h in run.report.highlights %}<li>{{ h }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if run.report.recommendations %}
+  <div class="sub-block">
+    <h3>Recommendations</h3>
+    <ul>
+      {% for r in run.report.recommendations %}<li>{{ r }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro checks_card(grouped_checks) %}
+<div class="card">
+  <h2>All checks</h2>
+  {% for category, checks in grouped_checks.items() %}
+  <div class="check-group">
+    <h3>{{ category }}</h3>
+    <table class="checks-table">
+      {% for c in checks %}
+      <tr class="status-{{ c.status }}">
+        <td class="dot-cell"><span class="dot dot-{{ c.status }}"></span></td>
+        <td class="name-cell">{{ c.name }}</td>
+        <td class="note-cell">{{ c.note }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}

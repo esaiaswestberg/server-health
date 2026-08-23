@@ -88,8 +88,13 @@ services:
       - ${CODEX_AUTH_DIR:-~/.codex}:/root/.codex
 
       # The SQLite database: state, continuous CPU/memory/GPU samples, and
-      # run history for the web dashboard.
-      - ./data:/data
+      # run history for the web dashboard. DATA_DIR defaults to ./data for
+      # plain `docker compose up`, but set it to an absolute host path if
+      # deploying via Portainer - Portainer versions each stack update into
+      # its own subfolder, and a relative path here would resolve against
+      # that ever-changing folder, silently resetting all history on every
+      # update instead of persisting it.
+      - ${DATA_DIR:-./data}:/data
 
       # Real host metrics instead of the container's own cgroup/overlay view.
       - /proc:/host/proc:ro

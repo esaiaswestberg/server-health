@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ hostname }} - run {{ run.ts if run else '' }}</title>
+{% include "_style.html" %}
+</head>
+<body>
+<div class="page">
+  <header class="page-header">
+    <h1><a href="/">{{ hostname }}</a></h1>
+    <span class="muted"><a href="/">&larr; back to dashboard</a></span>
+  </header>
+
+  {% if not run %}
+  <div class="card empty-state">
+    <p>Run not found - it may have been pruned (see <code>HISTORY_MAX_RUNS</code>).</p>
+  </div>
+  {% else %}
+  {% from "_macros.html" import report_card, checks_card %}
+  {{ report_card(run, relative, "Checked") }}
+  {{ checks_card(grouped_checks) }}
+  {% endif %}
+</div>
+</body>
+</html>
