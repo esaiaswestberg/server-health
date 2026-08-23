@@ -9,6 +9,7 @@ lets the scheduled check and the web dashboard read concurrently without
 blocking on these writes.
 """
 
+import glob
 import logging
 import os
 import time
@@ -27,6 +28,56 @@ METRICS_RETENTION_HOURS = float(os.environ.get("METRICS_RETENTION_HOURS", 48))
 PRUNE_EVERY_N_SAMPLES = 360  # ~1h at the default 10s interval
 
 GPU_QUERY_FIELDS = "index,utilization.gpu,utilization.memory,memory.used,memory.total,temperature.gpu"
+
+# CPU temperature: read straight from the host's sysfs (mounted read-only at
+# /host/root/sys), no subprocess/chroot needed since these are just small
+# text files. Two overlapping sources, since coverage varies a lot by
+# platform - readings are deduped by taking the max, so overlap is harmless.
+HOST_SYS = "/host/root/sys"
+_CPU_HWMON_NAMES = {"coretemp", "k10temp", "k8temp", "zenpower", "cpu_thermal"}
+_CPU_THERMAL_ZONE_KEYWORDS = ("cpu", "x86_pkg", "soc", "acpitz")
+
+
+def _read_millidegrees(path: str):
+    try:
+        with open(path) as f:
+            return int(f.read().strip()) / 1000
+    except (OSError, ValueError):
+        return None
+
+
+def _read_cpu_temp_c():
+    """Returns the highest CPU-relevant temperature reading found (°C), or
+    None if no recognizable sensor is available - some hosts (VMs,
+    certain ARM boards) simply don't expose one."""
+    readings = []
+
+    for zone_dir in glob.glob(os.path.join(HOST_SYS, "class/thermal/thermal_zone*")):
+        try:
+            with open(os.path.join(zone_dir, "type")) as f:
+                zone_type = f.read().strip().lower()
+        except OSError:
+            continue
+        if not any(keyword in zone_type for keyword in _CPU_THERMAL_ZONE_KEYWORDS):
+            continue
+        temp = _read_millidegrees(os.path.join(zone_dir, "temp"))
+        if temp is not None:
+            readings.append(temp)
+
+    for hwmon_dir in glob.glob(os.path.join(HOST_SYS, "class/hwmon/hwmon*")):
+        try:
+            with open(os.path.join(hwmon_dir, "name")) as f:
+                name = f.read().strip().lower()
+        except OSError:
+            continue
+        if name not in _CPU_HWMON_NAMES:
+            continue
+        for temp_file in glob.glob(os.path.join(hwmon_dir, "temp*_input")):
+            temp = _read_millidegrees(temp_file)
+            if temp is not None:
+                readings.append(temp)
+
+    return max(readings) if readings else None
 
 
 def _configure_procfs():
@@ -75,6 +126,9 @@ def _take_sample(gpu_available: bool) -> dict:
         "cpu_pct": psutil.cpu_percent(interval=None),
         "mem_pct": psutil.virtual_memory().percent,
     }
+    cpu_temp = _read_cpu_temp_c()
+    if cpu_temp is not None:
+        sample["cpu_temp_c"] = cpu_temp
     if gpu_available:
         gpu = _sample_gpu()
         if gpu:
@@ -86,8 +140,8 @@ def _insert_sample(sample: dict):
     ts_iso = sample["ts"].isoformat()
     with db.connect() as conn:
         cursor = conn.execute(
-            "INSERT INTO metrics (ts, cpu_pct, mem_pct) VALUES (?, ?, ?)",
-            (ts_iso, sample["cpu_pct"], sample["mem_pct"]),
+            "INSERT INTO metrics (ts, cpu_pct, mem_pct, cpu_temp_c) VALUES (?, ?, ?, ?)",
+            (ts_iso, sample["cpu_pct"], sample["mem_pct"], sample.get("cpu_temp_c")),
         )
         metric_id = cursor.lastrowid
         for gpu in sample.get("gpu", []):
@@ -117,9 +171,10 @@ def main():
     psutil.cpu_percent(interval=None)  # prime it - the first call's own value is meaningless
 
     gpu_available = _detect_gpu()
+    cpu_temp_available = _read_cpu_temp_c() is not None
     log.info(
-        "sampler starting: interval=%ss retention=%sh gpu=%s",
-        SAMPLE_INTERVAL_SECONDS, METRICS_RETENTION_HOURS, gpu_available,
+        "sampler starting: interval=%ss retention=%sh gpu=%s cpu_temp=%s",
+        SAMPLE_INTERVAL_SECONDS, METRICS_RETENTION_HOURS, gpu_available, cpu_temp_available,
     )
 
     count = 0

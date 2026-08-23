@@ -17,7 +17,7 @@ login), not a metered API key.
 
 | Category | What |
 |---|---|
-| System (continuous) | CPU % and memory %, sampled every `SAMPLE_INTERVAL_SECONDS` in the background and summarized as min/avg/max/p95 over the whole window since the last run |
+| System (continuous) | CPU %, memory %, and CPU temperature, sampled every `SAMPLE_INTERVAL_SECONDS` in the background and summarized as min/avg/max/p95 over the whole window since the last run |
 | GPU (continuous) | NVIDIA GPU utilization/VRAM/temperature, sampled the same way (skipped entirely if no GPU is detected) |
 | System (point-in-time) | Load average, swap, uptime |
 | Disk | Usage % + inodes per real host filesystem, `docker system df` breakdown |
@@ -148,8 +148,9 @@ It shows the same things ntfy gets notified about, live and continuously:
 - Every individual check result from the most recent run, grouped by category.
 - A table of recent runs, so you can see status changes over time at a
   glance - click any row to see that run's full report and check breakdown.
-- Charts of CPU, memory, and per-GPU utilization/VRAM/temperature over the
-  last `DASHBOARD_CHART_HOURS` (default 6), built from the same continuous
+- Charts of CPU, memory, CPU temperature (when a readable sensor is found),
+  and per-GPU utilization/VRAM/temperature over the last
+  `DASHBOARD_CHART_HOURS` (default 6), built from the same continuous
   samples the scheduled check summarizes.
 
 It's a small Flask app (`app/web.py`), started alongside the sampler and
@@ -238,6 +239,10 @@ See `.env.example` for the full list with defaults. The notable ones:
 - `SAMPLE_INTERVAL_SECONDS` (default 10) / `METRICS_RETENTION_HOURS`
   (default 48) - how often the background sampler records a CPU/memory/GPU
   data point, and how long those samples are kept before being pruned.
+- `CPU_TEMP_WARN_C` / `CPU_TEMP_CRIT_C` - CPU temperature thresholds,
+  max-based (a brief spike matters, same reasoning as GPU temperature).
+  Ignored if no readable sensor is found on the host (VMs and some ARM
+  boards don't expose one).
 - `GPU_TEMP_WARN_C` / `GPU_TEMP_CRIT_C` / `GPU_MEM_WARN_PCT` /
   `GPU_MEM_CRIT_PCT` - GPU status thresholds. Deliberately based on
   temperature and VRAM usage, not utilization - a GPU sitting at 100%
@@ -279,6 +284,11 @@ See `.env.example` for the full list with defaults. The notable ones:
 - `/proc:/host/proc:ro` and `/:/host/root:ro` - real host CPU/memory/disk
   numbers (via `psutil.PROCFS_PATH`) and disk usage, instead of the
   container's own cgroup/overlay view.
+- `/sys:/host/root/sys:ro` - CPU temperature sensors
+  (`/sys/class/thermal`, `/sys/class/hwmon`), same reasoning as `/proc`
+  above (it's normally its own separate mount, so it doesn't come along
+  with the `/:/host/root` bind). Read-only; just exposes hardware sensor
+  metadata, nothing sensitive.
 - `/var/run/docker.sock:/var/run/docker.sock:ro` - container status and
   image-update checks. **This is still root-equivalent access to your
   Docker daemon**, even mounted read-only, since anything that can talk to
