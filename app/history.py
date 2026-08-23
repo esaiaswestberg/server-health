@@ -37,6 +37,7 @@ def append_run(entry: dict, max_runs: int = 500) -> None:
 
 def _row_to_entry(row) -> dict:
     return {
+        "id": row["id"],
         "ts": row["ts"],
         "report": {
             "status": row["status"],
@@ -56,3 +57,11 @@ def load_recent(limit: int = 50) -> list:
             "SELECT * FROM runs ORDER BY ts DESC LIMIT ?", (limit,)
         ).fetchall()
     return [_row_to_entry(row) for row in rows]
+
+
+def load_by_id(run_id: int):
+    """Returns a single run entry by id, or None if it doesn't exist
+    (e.g. already pruned)."""
+    with db.connect() as conn:
+        row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+    return _row_to_entry(row) if row else None

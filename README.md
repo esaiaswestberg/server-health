@@ -146,7 +146,8 @@ It shows the same things ntfy gets notified about, live and continuously:
 
 - The latest AI report (status badge, summary, highlights, recommendations).
 - Every individual check result from the most recent run, grouped by category.
-- A table of recent runs, so you can see status changes over time at a glance.
+- A table of recent runs, so you can see status changes over time at a
+  glance - click any row to see that run's full report and check breakdown.
 - Charts of CPU, memory, and per-GPU utilization/VRAM/temperature over the
   last `DASHBOARD_CHART_HOURS` (default 6), built from the same continuous
   samples the scheduled check summarizes.
