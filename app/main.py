@@ -69,6 +69,8 @@ def load_config():
         "mem_crit_pct": _env_float("MEM_CRIT_PCT", 95),
         "disk_warn_pct": _env_float("DISK_WARN_PCT", 80),
         "disk_crit_pct": _env_float("DISK_CRIT_PCT", 95),
+        "cpu_temp_warn_c": _env_float("CPU_TEMP_WARN_C", 80),
+        "cpu_temp_crit_c": _env_float("CPU_TEMP_CRIT_C", 95),
         "gpu_temp_warn_c": _env_float("GPU_TEMP_WARN_C", 80),
         "gpu_temp_crit_c": _env_float("GPU_TEMP_CRIT_C", 90),
         "gpu_mem_warn_pct": _env_float("GPU_MEM_WARN_PCT", 85),

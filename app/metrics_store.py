@@ -12,10 +12,11 @@ from . import db
 
 def load_samples(since=None) -> list:
     """Returns sample dicts shaped like
-    {"ts": datetime, "cpu_pct": .., "mem_pct": .., "gpu": [{"index", "util_pct",
-    "mem_pct", "temp_c"}, ...]}, optionally filtered to samples strictly
-    after `since`, oldest first."""
-    query = "SELECT id, ts, cpu_pct, mem_pct FROM metrics"
+    {"ts": datetime, "cpu_pct": .., "mem_pct": .., "cpu_temp_c": .., "gpu":
+    [{"index", "util_pct", "mem_pct", "temp_c"}, ...]}, optionally filtered
+    to samples strictly after `since`, oldest first. cpu_temp_c/gpu are
+    only present when a reading was actually available for that sample."""
+    query = "SELECT id, ts, cpu_pct, mem_pct, cpu_temp_c FROM metrics"
     params = []
     if since is not None:
         query += " WHERE ts > ?"
@@ -51,6 +52,8 @@ def load_samples(since=None) -> list:
             "cpu_pct": row["cpu_pct"],
             "mem_pct": row["mem_pct"],
         }
+        if row["cpu_temp_c"] is not None:
+            sample["cpu_temp_c"] = row["cpu_temp_c"]
         gpu = gpu_by_metric.get(row["id"])
         if gpu:
             sample["gpu"] = gpu

@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
     cpu_pct REAL,
-    mem_pct REAL
+    mem_pct REAL,
+    cpu_temp_c REAL
 );
 CREATE INDEX IF NOT EXISTS idx_metrics_ts ON metrics(ts);
 
@@ -68,9 +69,20 @@ def connect():
         conn.close()
 
 
+def _migrate(conn) -> None:
+    """Lightweight migrations for columns added after a database already
+    exists - CREATE TABLE IF NOT EXISTS alone won't add them to an
+    existing table. Each check is a cheap PRAGMA read, safe to run on
+    every startup."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(metrics)")}
+    if "cpu_temp_c" not in columns:
+        conn.execute("ALTER TABLE metrics ADD COLUMN cpu_temp_c REAL")
+
+
 def init_db() -> None:
     """Idempotent - safe to call from every process at startup even if
     another process is creating the schema at the same moment (WAL +
     busy_timeout serialize the two CREATE TABLE IF NOT EXISTS calls)."""
     with connect() as conn:
         conn.executescript(_SCHEMA)
+        _migrate(conn)

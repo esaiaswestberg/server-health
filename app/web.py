@@ -61,6 +61,11 @@ def _current_gpu_indices():
     return sorted(indices)
 
 
+def _cpu_temp_available():
+    since = datetime.now(timezone.utc) - timedelta(minutes=5)
+    return any("cpu_temp_c" in sample for sample in load_samples(since))
+
+
 def _dashboard_context():
     runs = history.load_recent(HISTORY_DISPLAY_LIMIT)
     latest = runs[0] if runs else None
@@ -79,6 +84,7 @@ def dashboard():
         "dashboard.html",
         chart_hours=DEFAULT_CHART_HOURS,
         gpu_indices=_current_gpu_indices(),
+        cpu_temp_available=_cpu_temp_available(),
         **_dashboard_context(),
     )
 
@@ -145,6 +151,7 @@ def api_metrics():
 
     cpu_points = [(s["ts"], s["cpu_pct"]) for s in samples if "cpu_pct" in s]
     mem_points = [(s["ts"], s["mem_pct"]) for s in samples if "mem_pct" in s]
+    cpu_temp_points = [(s["ts"], s["cpu_temp_c"]) for s in samples if "cpu_temp_c" in s]
 
     gpu_by_index = defaultdict(lambda: {"util": [], "mem": [], "temp": []})
     for s in samples:
@@ -157,6 +164,7 @@ def api_metrics():
     payload = {
         "cpu": _series(cpu_points, multi_day),
         "mem": _series(mem_points, multi_day),
+        "cpu_temp": _series(cpu_temp_points, multi_day),
         "gpu": {
             str(idx): {
                 "util": _series(data["util"], multi_day),

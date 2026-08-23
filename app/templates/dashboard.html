@@ -20,6 +20,9 @@
     <div class="charts-grid">
       <div class="chart-box"><h3>CPU</h3><canvas id="cpuChart"></canvas></div>
       <div class="chart-box"><h3>Memory</h3><canvas id="memChart"></canvas></div>
+      {% if cpu_temp_available %}
+      <div class="chart-box"><h3>CPU temperature</h3><canvas id="cpuTempChart"></canvas></div>
+      {% endif %}
       {% for idx in gpu_indices %}
       <div class="chart-box"><h3>GPU {{ idx }} - utilization / VRAM</h3><canvas id="gpu{{ idx }}UtilChart"></canvas></div>
       <div class="chart-box"><h3>GPU {{ idx }} - temperature</h3><canvas id="gpu{{ idx }}TempChart"></canvas></div>
@@ -70,6 +73,9 @@
 
   charts.cpu = makeChart('cpuChart', [{ label: 'CPU %', color: '#3b82f6' }], '%');
   charts.mem = makeChart('memChart', [{ label: 'Memory %', color: '#8b5cf6' }], '%');
+  {% if cpu_temp_available %}
+  charts.cpuTemp = makeChart('cpuTempChart', [{ label: 'CPU Temp °C', color: '#ef4444' }], '°C');
+  {% endif %}
   {% for idx in gpu_indices %}
   charts['gpu{{ idx }}Util'] = makeChart('gpu{{ idx }}UtilChart', [
     { label: 'Utilization %', color: '#10b981' },
@@ -91,6 +97,7 @@
       const data = await res.json();
       updateChart(charts.cpu, data.cpu.labels, [data.cpu.values]);
       updateChart(charts.mem, data.mem.labels, [data.mem.values]);
+      if (data.cpu_temp) updateChart(charts.cpuTemp, data.cpu_temp.labels, [data.cpu_temp.values]);
       for (const [idx, gpu] of Object.entries(data.gpu)) {
         updateChart(charts['gpu' + idx + 'Util'], gpu.util.labels, [gpu.util.values, gpu.mem.values]);
         updateChart(charts['gpu' + idx + 'Temp'], gpu.temp.labels, [gpu.temp.values]);

@@ -60,6 +60,23 @@ def _cpu_mem_results(samples, config) -> list:
             data={"samples": len(mem_values)},
         ))
 
+    temp_values = [s["cpu_temp_c"] for s in samples if "cpu_temp_c" in s]
+    if temp_values:
+        # Peak matters most for thermal safety (a brief spike is still a
+        # real spike), so this is max-based only - same reasoning as GPU
+        # temperature below, unlike CPU/memory % where sustained average
+        # load is also meaningful.
+        status = Status.OK
+        if max(temp_values) >= config["cpu_temp_crit_c"]:
+            status = Status.CRIT
+        elif max(temp_values) >= config["cpu_temp_warn_c"]:
+            status = Status.WARN
+        results.append(CheckResult(
+            category="system", name="cpu-temp", status=status,
+            note=f"{_window_stat_line(temp_values, '°C')} over {len(temp_values)} samples",
+            data={"samples": len(temp_values)},
+        ))
+
     return results
 
 

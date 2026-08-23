@@ -32,6 +32,8 @@ services:
       MEM_CRIT_PCT: ${MEM_CRIT_PCT:-95}
       DISK_WARN_PCT: ${DISK_WARN_PCT:-80}
       DISK_CRIT_PCT: ${DISK_CRIT_PCT:-95}
+      CPU_TEMP_WARN_C: ${CPU_TEMP_WARN_C:-80}
+      CPU_TEMP_CRIT_C: ${CPU_TEMP_CRIT_C:-95}
       GPU_TEMP_WARN_C: ${GPU_TEMP_WARN_C:-80}
       GPU_TEMP_CRIT_C: ${GPU_TEMP_CRIT_C:-90}
       GPU_MEM_WARN_PCT: ${GPU_MEM_WARN_PCT:-85}
@@ -111,6 +113,10 @@ services:
       # Real host metrics instead of the container's own cgroup/overlay view.
       - /proc:/host/proc:ro
       - /:/host/root:ro
+      # /sys is normally its own mount too (same reasoning as /proc above) -
+      # needed to read CPU temperature sensors directly from sysfs
+      # (thermal_zone/hwmon). Read-only, just exposes hardware metadata.
+      - /sys:/host/root/sys:ro
       # /run is normally its own tmpfs mount, so it doesn't come along with
       # the root bind above - mount it explicitly under /host/root so a
       # `chroot /host/root systemctl --failed` can reach the host's real
